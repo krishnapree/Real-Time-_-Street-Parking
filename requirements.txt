@@ -1,0 +1,6 @@
+Flask==3.0.3
+gunicorn==20.1.0
+keras==3.3.3
+numpy==1.26.4
+opencv-python-headless==4.10.0.82
+twilio==9.1.1
