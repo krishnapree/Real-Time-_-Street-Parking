@@ -4,16 +4,22 @@ import numpy as np
 
 resnet_model = ResNet50(weights='imagenet')
 
-def preprocess_image(img_path):
-    img = image.load_img(img_path, target_size=(224, 224))
-    img_array = image.img_to_array(img)
+def preprocess_image(img_path=None, img_array=None):
+    if img_path:
+        img = image.load_img(img_path, target_size=(224, 224))
+        img_array = image.img_to_array(img)
+    elif img_array is not None:
+        img_array = cv2.resize(img_array, (224, 224))
+    else:
+        raise ValueError("Either img_path or img_array must be provided.")
+        
     img_array = np.expand_dims(img_array, axis=0)
     img_array = preprocess_input(img_array)
     return img_array
 
-def analyze_image(file_path):
+def analyze_image(img_path=None, img_array=None):
     try:
-        img_array = preprocess_image(file_path)
+        img_array = preprocess_image(img_path=img_path, img_array=img_array)
         predictions = resnet_model.predict(img_array)
         decoded_predictions = decode_predictions(predictions)
         return decoded_predictions[0][0][1]
