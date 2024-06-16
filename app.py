@@ -1,9 +1,10 @@
-from flask import Flask, request, render_template, redirect, url_for
-from datetime import datetime
+from flask import Flask, request, render_template, redirect, url_for, Response
 import os
+from datetime import datetime
 from twilio.rest import Client
 from config import Config
 from models.resnet50_model import analyze_image
+import cv2
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -39,7 +40,7 @@ def upload_file():
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(file_path)
 
-        analysis_result = analyze_image(file_path)
+        analysis_result = analyze_image(img_path=file_path)
 
         if analysis_result is not None:
             now = datetime.now()
@@ -49,7 +50,6 @@ def upload_file():
             with open(output_csv_path, 'a', newline='') as f:
                 f.write(f"{file.filename},{analysis_result}\n")
 
-            # Notify user
             twilio_client.messages.create(
                 body=f"Your parking spot {file.filename} is detected. Analysis result: {analysis_result}",
                 from_=app.config['TWILIO_PHONE_NUMBER'],
@@ -59,6 +59,31 @@ def upload_file():
             return redirect(url_for('index'))
 
     return "Analysis failed"
+
+def generate_frames():
+    camera = cv2.VideoCapture(0)  # 0 for default camera
+
+    while True:
+        success, frame = camera.read()
+        if not success:
+            break
+        else:
+            # Analyze the frame
+            analysis_result = analyze_image(img_array=frame)
+
+            # Draw the analysis result on the frame
+            if analysis_result is not None:
+                cv2.putText(frame, f'Analysis: {analysis_result}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2, cv2.LINE_AA)
+
+            ret, buffer = cv2.imencode('.jpg', frame)
+            frame = buffer.tobytes()
+
+            yield (b'--frame\r\n'
+                   b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
+
+@app.route('/video_feed')
+def video_feed():
+    return Response(generate_frames(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
 if __name__ == "__main__":
     app.run(debug=True)
