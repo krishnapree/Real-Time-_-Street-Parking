@@ -51,30 +51,62 @@ def upload_file():
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(file_path)
 
-        # Detect the area associated with the uploaded image
-        area_detected = "some_area_from_image"  # Update this line with your logic
+        try:
+            # Check if the file is a video
+            if file.filename.rsplit('.', 1)[1].lower() in ['mp4', 'avi', 'mov']:
+                analysis_result = analyze_video(file_path)
+            else:
+                analysis_result = analyze_image(img_path=file_path)
 
-        analysis_result = analyze_image(img_path=file_path)
+            if analysis_result is not None:
+                now = datetime.now()
+                current_date = now.strftime("%Y-%m-%d")
+                output_csv_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), f"{current_date}_parking_results.csv")
 
-        if analysis_result is not None:
-            now = datetime.now()
-            current_date = now.strftime("%Y-%m-%d")
-            output_csv_path = os.path.join(os.path.dirname(os.path.realpath(__file__)), f"{current_date}_parking_results.csv")
+                with open(output_csv_path, 'a', newline='') as f:
+                    f.write(f"{file.filename},{analysis_result}\n")
 
-            with open(output_csv_path, 'a', newline='') as f:
-                f.write(f"{file.filename},{analysis_result}\n")
+                for user in registered_users:
+                    # Use your logic to detect area from analysis_result
+                    area_detected = "some_area_from_analysis_result"
 
-            for user in registered_users:
-                if user['area'] == area_detected:
-                    twilio_client.messages.create(
-                        body=f"Parking spot detected in {area_detected} for {file.filename}. Analysis result: {analysis_result}",
-                        from_=app.config['TWILIO_PHONE_NUMBER'],
-                        to=user['phone_number']
-                    )
+                    if user['area'] == area_detected:
+                        twilio_client.messages.create(
+                            body=f"Parking spot detected in {area_detected} for {file.filename}. Analysis result: {analysis_result}",
+                            from_=app.config['TWILIO_PHONE_NUMBER'],
+                            to=user['phone_number']
+                        )
 
-            return redirect(url_for('index'))
+                return redirect(url_for('index'))
+
+        except Exception as e:
+            print(f"Error during analysis: {e}")
+            return "Analysis failed"
 
     return "Analysis failed"
+
+def analyze_video(video_path):
+    cap = cv2.VideoCapture(video_path)
+    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    analysis_result = None
+
+    try:
+        for _ in range(frame_count):
+            ret, frame = cap.read()
+            if not ret:
+                break
+            analysis_result = analyze_image(img_array=frame)  # Assuming analyze_image can process individual frames
+
+            if analysis_result is not None:
+                # Optionally, stop on the first detection
+                break
+
+    except Exception as e:
+        print(f"Error analyzing video: {e}")
+    finally:
+        cap.release()
+
+    return analysis_result
 
 def generate_frames():
     camera = cv2.VideoCapture(0)  # 0 for default camera
@@ -103,4 +135,6 @@ def video_feed():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
+
 
