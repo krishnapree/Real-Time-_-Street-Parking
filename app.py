@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template, redirect, url_for, Response
+from flask import Flask, request, render_template, redirect, url_for, Response, jsonify
 import os
 from datetime import datetime
 from twilio.rest import Client
@@ -13,6 +13,8 @@ os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
 twilio_client = Client(app.config['TWILIO_ACCOUNT_SID'], app.config['TWILIO_AUTH_TOKEN'])
 
+registered_users = []
+
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in app.config['ALLOWED_EXTENSIONS']
 
@@ -25,6 +27,15 @@ def calculate_dynamic_price(current_demand, base_price):
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@app.route('/register', methods=['POST'])
+def register_user():
+    phone_number = request.form['phone_number']
+    area = request.form['area']
+    
+    registered_users.append({'phone_number': phone_number, 'area': area})
+    
+    return jsonify({'message': 'User registered successfully'})
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -40,6 +51,9 @@ def upload_file():
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], file.filename)
         file.save(file_path)
 
+        # Detect the area associated with the uploaded image
+        area_detected = "some_area_from_image"  # Update this line with your logic
+
         analysis_result = analyze_image(img_path=file_path)
 
         if analysis_result is not None:
@@ -50,11 +64,13 @@ def upload_file():
             with open(output_csv_path, 'a', newline='') as f:
                 f.write(f"{file.filename},{analysis_result}\n")
 
-            twilio_client.messages.create(
-                body=f"Your parking spot {file.filename} is detected. Analysis result: {analysis_result}",
-                from_=app.config['TWILIO_PHONE_NUMBER'],
-                to='user_phone_number'
-            )
+            for user in registered_users:
+                if user['area'] == area_detected:
+                    twilio_client.messages.create(
+                        body=f"Parking spot detected in {area_detected} for {file.filename}. Analysis result: {analysis_result}",
+                        from_=app.config['TWILIO_PHONE_NUMBER'],
+                        to=user['phone_number']
+                    )
 
             return redirect(url_for('index'))
 
@@ -87,3 +103,4 @@ def video_feed():
 
 if __name__ == "__main__":
     app.run(debug=True)
+
